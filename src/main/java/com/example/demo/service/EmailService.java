@@ -25,8 +25,6 @@ public class EmailService {
     @Autowired
     private JavaMailSender javaMailSender;
 
-    List<Long> recipientList;
-
     public void sendEmails() {
         // Get all recipients that haven't been sent yet
         List<Recipient> recipients = recipientRepo.findBySent(false);
@@ -40,8 +38,8 @@ public class EmailService {
                 message.setSubject(recipient.getSubject());
 
                 javaMailSender.send(message);
-//                recipient.setSent(true);
-//                recipientRepo.save(recipient);
+                recipient.setSent(true);
+                recipientRepo.save(recipient);
             } catch (Exception e) {
                 throw new CustomException("Fail", "Blocked", 404);
             }
