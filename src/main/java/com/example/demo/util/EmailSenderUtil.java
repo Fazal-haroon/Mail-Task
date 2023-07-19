@@ -1,12 +1,14 @@
 package com.example.demo.util;
 
 import com.example.demo.config.ConfigurationProperty;
-import com.sun.mail.smtp.SMTPTransport;
+import com.example.demo.exception.CustomSMTPException;
+import com.sun.mail.smtp.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
 import javax.activation.FileDataSource;
@@ -51,7 +53,7 @@ public class EmailSenderUtil {
         transport.close();
     }
 
-    public void sendEmail(String toEmailAddress, String Subject, String messageContent) {
+    public void sendEmail(String toEmailAddress, String Subject, String messageContent) throws CustomSMTPException {
         Properties prop = setSystemProperties();
         Session session = Session.getInstance(prop, new javax.mail.Authenticator() {
             protected PasswordAuthentication getPasswordAuthentication() {
@@ -71,7 +73,43 @@ public class EmailSenderUtil {
 
             log.info("Email sent successfully!");
 
+        } catch (SMTPSendFailedException e) {
+            List<Address> validUnsentAddresses = List.of(e.getValidUnsentAddresses());
+            List<Address> invalidAddresses = List.of(e.getInvalidAddresses());
+            List<Address> validSentAddresses = List.of(e.getValidSentAddresses());
+
+            StringBuilder sb = new StringBuilder();
+            System.out.println("CustomSMTPSendFailedException: Email to the following recipients");
+            sb.append("CustomSMTPSendFailedException: Email to the following recipients:\n");
+            sb.append("\nValid Unsent Addresses:\n");
+            validUnsentAddresses.stream()
+                    .map(Address::toString)
+                    .forEach(address -> sb.append("- ").append(address).append("\n"));
+
+            sb.append("\nValid sent Addresses:\n");
+            validSentAddresses.stream()
+                    .map(Address::toString)
+                    .forEach(address -> sb.append("- ").append(address).append("\n"));
+
+            sb.append("\nInvalid Addresses:\n");
+            invalidAddresses.stream()
+                    .map(Address::toString)
+                    .forEach(address -> sb.append("- ").append(address).append("\n"));
+
+            System.err.println(sb.toString());
+            System.out.println("SMTPSendFailedException: " + e.getMessage());
+            throw new CustomSMTPException("Failed to send email to " + toEmailAddress, e);
+        } catch (SMTPSenderFailedException e) {
+            System.out.println("SMTPSenderFailedException: " + e.getMessage());
+            throw new CustomSMTPException("SMTP sender failed while sending email to " + toEmailAddress, e);
+        } catch (SMTPAddressSucceededException e) {
+            System.out.println("SMTPAddressSucceededException: " + e.getMessage());
+            throw new CustomSMTPException("SMTP address succeeded while sending email to " + toEmailAddress, e);
+        } catch (SMTPAddressFailedException e) {
+            System.out.println("SMTPAddressFailedException: " + e.getMessage());
+            throw new CustomSMTPException("SMTP address failed while sending email to " + toEmailAddress, e);
         } catch (MessagingException e) {
+            System.out.println("MessagingException: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -206,7 +244,7 @@ public class EmailSenderUtil {
         prop.put("mail.smtp.timeout", String.valueOf(timeout));
         prop.put("mail.smtp.connectiontimeout", String.valueOf(timeout));
         prop.put("mail.debug", "true");
-        if(enviornmentValue.equalsIgnoreCase("dev")) {
+        if (enviornmentValue.equalsIgnoreCase("dev")) {
 //            prop.put("mail.smtp.starttls.required", configurationProperty.isSmtpSSLRequiredAuth());
 //            prop.put("mail.smtp.ssl.protocols", configurationProperty.getSmtpSSLprotocols());
             prop.put("mail.smtp.ssl.trust", configurationProperty.getHost());
