@@ -1,6 +1,7 @@
 package com.example.demo.util;
 
 import com.example.demo.config.ConfigurationProperty;
+import com.sun.mail.smtp.SMTPTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,28 @@ public class EmailSenderUtil {
 
     @Value("${spring.profiles.active}")
     private String enviornmentValue;
+
+    public void send(String from, String to, String subject, String body) throws MessagingException {
+        Properties props = setSystemProperties();
+        Session session = Session.getInstance(props, new javax.mail.Authenticator() {
+            protected javax.mail.PasswordAuthentication getPasswordAuthentication() {
+                return new javax.mail.PasswordAuthentication(configurationProperty.getUsername(),
+                        configurationProperty.getPassword());
+            }
+        });
+
+        Message message = new MimeMessage(session);
+        message.setFrom(new InternetAddress(from));
+        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
+        message.setSubject(subject);
+        message.setText(body);
+
+        SMTPTransport transport = (SMTPTransport) session.getTransport("smtp");
+        transport.connect(configurationProperty.getHost(), configurationProperty.getPort(),
+                configurationProperty.getUsername(), configurationProperty.getPassword());
+        transport.sendMessage(message, message.getAllRecipients());
+        transport.close();
+    }
 
     public void sendEmail(String toEmailAddress, String Subject, String messageContent) {
         Properties prop = setSystemProperties();
@@ -184,8 +207,8 @@ public class EmailSenderUtil {
         prop.put("mail.smtp.connectiontimeout", String.valueOf(timeout));
         prop.put("mail.debug", "true");
         if(enviornmentValue.equalsIgnoreCase("dev")) {
-            prop.put("mail.smtp.starttls.required", configurationProperty.isSmtpSSLRequiredAuth());
-            prop.put("mail.smtp.ssl.protocols", configurationProperty.getSmtpSSLprotocols());
+//            prop.put("mail.smtp.starttls.required", configurationProperty.isSmtpSSLRequiredAuth());
+//            prop.put("mail.smtp.ssl.protocols", configurationProperty.getSmtpSSLprotocols());
             prop.put("mail.smtp.ssl.trust", configurationProperty.getHost());
         }
         return prop;

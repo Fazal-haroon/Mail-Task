@@ -30,11 +30,11 @@ public class ConfigurationProperty {
 	@Value("${com.mail.smtp.starttls.enable}")
 	private boolean smtpStarttlsenable;
 
-	@Value("${com.mail.smtp.ssl.required}")
-	private boolean smtpSSLRequiredAuth;
-
-	@Value("${com.mail.smtp.ssl.protocols}")
-	private String smtpSSLprotocols;
+//	@Value("${com.mail.smtp.ssl.required}")
+//	private boolean smtpSSLRequiredAuth;
+//
+//	@Value("${com.mail.smtp.ssl.protocols}")
+//	private String smtpSSLprotocols;
 
 	public String getFrom() {
 		return from;
@@ -79,17 +79,17 @@ public class ConfigurationProperty {
 		this.smtpStarttlsenable = smtpStarttlsenable;
 	}
 
-	public boolean isSmtpSSLRequiredAuth() {
-		return smtpSSLRequiredAuth;
-	}
-	public void setSmtpSSLRequiredAuth(boolean smtpSSLRequiredAuth) {
-		this.smtpSSLRequiredAuth = smtpSSLRequiredAuth;
-	}
-	public String getSmtpSSLprotocols() {
-		return smtpSSLprotocols;
-	}
-	public void setSmtpSSLprotocols(String smtpSSLprotocols) {
-		this.smtpSSLprotocols = smtpSSLprotocols;
-	}
+//	public boolean isSmtpSSLRequiredAuth() {
+//		return smtpSSLRequiredAuth;
+//	}
+//	public void setSmtpSSLRequiredAuth(boolean smtpSSLRequiredAuth) {
+//		this.smtpSSLRequiredAuth = smtpSSLRequiredAuth;
+//	}
+//	public String getSmtpSSLprotocols() {
+//		return smtpSSLprotocols;
+//	}
+//	public void setSmtpSSLprotocols(String smtpSSLprotocols) {
+//		this.smtpSSLprotocols = smtpSSLprotocols;
+//	}
 
 }
