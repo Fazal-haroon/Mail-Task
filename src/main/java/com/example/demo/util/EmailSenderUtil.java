@@ -2,7 +2,7 @@ package com.example.demo.util;
 
 import com.example.demo.config.ConfigurationProperty;
 import com.example.demo.exception.CustomSMTPException;
-import com.sun.mail.smtp.*;
+import com.sun.mail.smtp.SMTPTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,7 +17,9 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 @Service
@@ -30,6 +32,71 @@ public class EmailSenderUtil {
 
     @Value("${spring.profiles.active}")
     private String enviornmentValue;
+
+    private Map<String, Boolean> results;
+
+    public Map<String, Boolean> getResults() {
+        return results;
+    }
+
+    public void setResults(Map<String, Boolean> results) {
+        this.results = results;
+    }
+
+    public EmailSenderUtil(ConfigurationProperty configurationProperty) {
+        this.configurationProperty = configurationProperty;
+        this.results = new HashMap<>();
+    }
+
+    public void sendEmail(String toEmailAddress, String Subject, String messageContent) throws CustomSMTPException {
+        Properties prop = setSystemProperties();
+        Session session = Session.getInstance(prop, new javax.mail.Authenticator() {
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(configurationProperty.getUsername(),
+                        configurationProperty.getPassword());
+            }
+        });
+        try {
+            System.out.println("<---------Sending email--------->");
+            Message message = new MimeMessage(session);
+            message.setFrom(new InternetAddress(configurationProperty.getFrom()));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmailAddress));
+            message.setSubject(Subject);
+            message.setText(messageContent);
+
+            Transport.send(message);
+            log.info("Email sent successfully!");
+//            results.put(toEmailAddress, true);  // Success
+
+//            throw new javax.mail.SendFailedException("SMTP Send failed", new javax.mail.SendFailedException());
+
+        } catch (SendFailedException e) {
+            Address[] validUnsentAddresses = e.getValidUnsentAddresses();
+
+            results.put(toEmailAddress, false); // Failure
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("Failed to send email to the following recipients:\n");
+            for (Address address : validUnsentAddresses) {
+                sb.append("- ").append(address).append("\n");
+            }
+            System.err.println(sb.toString());
+            System.out.println("SMTPSendFailedException:" + e.getMessage());
+            throw new CustomSMTPException("Failed to send email to " + toEmailAddress, e);
+        } /*catch (SMTPSenderFailedException e) {
+            System.out.println("SMTPSenderFailedException: " + e.getMessage());
+            throw new CustomSMTPException("SMTP sender failed while sending email to " + toEmailAddress, e);
+        } catch (SMTPAddressSucceededException e) {
+            System.out.println("SMTPAddressSucceededException: " + e.getMessage());
+            throw new CustomSMTPException("SMTP address succeeded while sending email to " + toEmailAddress, e);
+        } catch (SMTPAddressFailedException e) {
+            System.out.println("SMTPAddressFailedException: " + e.getMessage());
+            throw new CustomSMTPException("SMTP address failed while sending email to " + toEmailAddress, e);
+        }*/ catch (MessagingException e) {
+            System.out.println("MessagingException: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 
     public void send(String from, String to, String subject, String body) throws MessagingException {
         Properties props = setSystemProperties();
@@ -51,67 +118,6 @@ public class EmailSenderUtil {
                 configurationProperty.getUsername(), configurationProperty.getPassword());
         transport.sendMessage(message, message.getAllRecipients());
         transport.close();
-    }
-
-    public void sendEmail(String toEmailAddress, String Subject, String messageContent) throws CustomSMTPException {
-        Properties prop = setSystemProperties();
-        Session session = Session.getInstance(prop, new javax.mail.Authenticator() {
-            protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(configurationProperty.getUsername(),
-                        configurationProperty.getPassword());
-            }
-        });
-        try {
-            System.out.println("<---------Sending email--------->");
-            Message message = new MimeMessage(session);
-            message.setFrom(new InternetAddress(configurationProperty.getFrom()));
-            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmailAddress));
-            message.setSubject(Subject);
-            message.setText(messageContent);
-
-            Transport.send(message);
-
-            log.info("Email sent successfully!");
-
-        } catch (SMTPSendFailedException e) {
-            List<Address> validUnsentAddresses = List.of(e.getValidUnsentAddresses());
-            List<Address> invalidAddresses = List.of(e.getInvalidAddresses());
-            List<Address> validSentAddresses = List.of(e.getValidSentAddresses());
-
-            StringBuilder sb = new StringBuilder();
-            System.out.println("CustomSMTPSendFailedException: Email to the following recipients");
-            sb.append("CustomSMTPSendFailedException: Email to the following recipients:\n");
-            sb.append("\nValid Unsent Addresses:\n");
-            validUnsentAddresses.stream()
-                    .map(Address::toString)
-                    .forEach(address -> sb.append("- ").append(address).append("\n"));
-
-            sb.append("\nValid sent Addresses:\n");
-            validSentAddresses.stream()
-                    .map(Address::toString)
-                    .forEach(address -> sb.append("- ").append(address).append("\n"));
-
-            sb.append("\nInvalid Addresses:\n");
-            invalidAddresses.stream()
-                    .map(Address::toString)
-                    .forEach(address -> sb.append("- ").append(address).append("\n"));
-
-            System.err.println(sb.toString());
-            System.out.println("SMTPSendFailedException: " + e.getMessage());
-            throw new CustomSMTPException("Failed to send email to " + toEmailAddress, e);
-        } catch (SMTPSenderFailedException e) {
-            System.out.println("SMTPSenderFailedException: " + e.getMessage());
-            throw new CustomSMTPException("SMTP sender failed while sending email to " + toEmailAddress, e);
-        } catch (SMTPAddressSucceededException e) {
-            System.out.println("SMTPAddressSucceededException: " + e.getMessage());
-            throw new CustomSMTPException("SMTP address succeeded while sending email to " + toEmailAddress, e);
-        } catch (SMTPAddressFailedException e) {
-            System.out.println("SMTPAddressFailedException: " + e.getMessage());
-            throw new CustomSMTPException("SMTP address failed while sending email to " + toEmailAddress, e);
-        } catch (MessagingException e) {
-            System.out.println("MessagingException: " + e.getMessage());
-            e.printStackTrace();
-        }
     }
 
     public void sendEmail(List<String> toEmailAddress, String Subject, String messageContent) {

@@ -1,14 +1,17 @@
 package com.example.demo.service;
 
 import com.example.demo.entity.Recipient;
-import com.example.demo.exception.CustomSMTPException;
 import com.example.demo.repository.RecipientRepository;
 import com.example.demo.util.EmailSenderUtil;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.mail.MessagingException;
+import javax.transaction.Transactional;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Log4j2
@@ -20,11 +23,38 @@ public class EmailService {
     @Autowired
     private EmailSenderUtil emailSenderService;
 
-    public void sendEmails() throws CustomSMTPException {
-        List<Recipient> recipients = recipientRepo.findBySent(false);
-        List<String> emailList = List.of("iqrar.kpk1000@gmail.com");
+    List<Recipient> recipients;
+
+    public EmailService(RecipientRepository recipientRepo, EmailSenderUtil emailSenderService) {
+        this.recipientRepo = recipientRepo;
+        this.emailSenderService = emailSenderService;
+    }
+
+    @Transactional
+    public void sendEmails() {
+        List<Long> emailId = new ArrayList<>();
+        List<String> emailList = new ArrayList<>();
+        recipients = recipientRepo.findBySent(false);
+        recipients.stream().forEach(recipient -> {
+            try {
+                emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
+                emailId.add(recipient.getId());
+            } catch (MessagingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        //Update Query
+        recipientRepo.updateFlagForUsers(emailId);
+        Map<String, Boolean> results = emailSenderService.getResults();
+        for (Map.Entry<String, Boolean> entry : results.entrySet()) {
+            String email = entry.getKey();
+            boolean status = entry.getValue();
+            emailList.add(email);
+        }
+        //search query
+        List<Recipient> recipients1 = recipientRepo.searchByEmail(emailList);
+        recipients = recipients1;
 //            emailSenderService.sendEmail(emailList, "recipient.getSubject()", "recipient.getBody()");
-            emailSenderService.sendEmail("iqrar2.kpk1000@gmail.com", "recipient.getSubject()", "recipient.getBody()");
 //            emailSenderService.sendEmailWithHTMLContent(emailList, "recipient.getSubject()", "recipient.getBody()");
 //            emailSenderService.sendEmailWithAttachement("iqrar.kpk1000@gmail.com", "recipient.getSubject()", "recipient.getBody()","recipient.getBody()");
 
