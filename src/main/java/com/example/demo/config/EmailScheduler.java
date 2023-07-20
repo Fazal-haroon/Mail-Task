@@ -17,6 +17,6 @@ public class EmailScheduler {
 
     @Scheduled(cron = "0 0/2 * * * *") // Every 5 minutes
     public void resendFailedEmails() {
-        emailService.resendEmails();
+//        emailService.sendEmails();
     }
 }
