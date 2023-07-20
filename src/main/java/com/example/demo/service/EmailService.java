@@ -13,7 +13,9 @@ import org.springframework.stereotype.Service;
 import javax.mail.MessagingException;
 import javax.transaction.Transactional;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,23 +28,24 @@ public class EmailService {
     @Autowired
     private EmailSenderUtil emailSenderService;
 
-    private List<Recipient> masterRecipients;
-
     @Autowired
     private CacheManager cacheManager;
 
+    private List<Recipient> masterRecipients;
+
     private List<Recipient> recipientsToUpdate; // List to store recipients that need to be updated in the database
 
-    public EmailService(RecipientRepository recipientRepo, EmailSenderUtil emailSenderService) {
-        this.recipientRepo = recipientRepo;
-        this.emailSenderService = emailSenderService;
+    private Set<String> emailList;
+
+    public EmailService() {
         this.recipientsToUpdate = new ArrayList<>();
+        this.emailList = new HashSet<>();
     }
 
-    @Cacheable("masterRecipients")
-    public List<Recipient> getMasterRecipients() {
-        return recipientRepo.findBySent(false);
-    }
+//    @Cacheable("masterRecipients")
+//    public List<Recipient> getMasterRecipients() {
+//        return recipientRepo.findBySent(false);
+//    }
 
     @Transactional
     public void sendEmails() {
@@ -53,26 +56,57 @@ public class EmailService {
 
     @Transactional
     public void resendEmails() {
-        loadMasterRecipients();
+        // Check if master recipients are already cached
+        if (masterRecipients == null) {
+            // If not cached, load recipients from the database
+            loadMasterRecipients();
+        }
         processRecipients();
         bulkUpdateRecipients(); // Bulk update the recipients at the end
     }
 
     private void loadMasterRecipients() {
-        masterRecipients = getMasterRecipients();
+        // Check if master recipients are already cached
+        Cache masterRecipientsCache = cacheManager.getCache("masterRecipients");
+        if (masterRecipientsCache != null) {
+            // Retrieve master recipients from the cache
+            Cache.ValueWrapper valueWrapper = masterRecipientsCache.get("recipients");
+            if (valueWrapper != null) {
+                masterRecipients = (List<Recipient>) valueWrapper.get();
+                return;
+            }
+        }
+        // If not cached, fetch recipients from the database
+        masterRecipients = recipientRepo.findBySent(false);
+        // Cache the master recipients for future use
+        if (masterRecipientsCache != null) {
+            masterRecipientsCache.put("recipients", masterRecipients);
+        }
     }
 
     private void processRecipients() {
-        for (Recipient recipient : masterRecipients) {
+        List<Recipient> recipientsCopy = new ArrayList<>(masterRecipients);
+
+        recipientsCopy.forEach(recipient -> {
             try {
                 emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
+                recipientsToUpdate.add(recipient);
+
+                // Remove the recipient from the cache after sending the email successfully
                 removeRecipientFromCache(recipient);
-                recipientsToUpdate.add(recipient); // Add to the update list
             } catch (MessagingException e) {
-                throw new RuntimeException(e);
+                log.error("Error sending email to {}: {}", recipient.getEmail(), e.getMessage(), e);
             }
+        });
+        Set<String> failEmailList = emailSenderService.getFailEmailList();
+        emailList.addAll(failEmailList);
+        if (!failEmailList.isEmpty()) {
+            // Search for recipients based on failed emails
+            masterRecipients = recipientRepo.searchByEmail(emailList);
+            emailList.clear();
         }
     }
+
 
     private void bulkUpdateRecipients() {
         List<Long> userIdList = recipientsToUpdate.stream()
@@ -87,13 +121,20 @@ public class EmailService {
         recipientsToUpdate.clear();
     }
 
+    // Method to remove a recipient from the cache
     public void removeRecipientFromCache(Recipient recipient) {
         Cache masterRecipientsCache = cacheManager.getCache("masterRecipients");
         if (masterRecipientsCache != null) {
-            Object key = recipient.getId();
-            masterRecipientsCache.evict(key);
-        } else {
-            log.warn("masterRecipients cache not found!");
+            // Retrieve the cached master recipients
+            Cache.ValueWrapper valueWrapper = masterRecipientsCache.get("recipients");
+            if (valueWrapper != null) {
+                List<Recipient> cachedRecipients = (List<Recipient>) valueWrapper.get();
+                if (cachedRecipients != null) {
+                    // Remove the specified recipient from the cached list
+                    cachedRecipients.remove(recipient);
+                    masterRecipientsCache.put("recipients", cachedRecipients);
+                }
+            }
         }
     }
 }
