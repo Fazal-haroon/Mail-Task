@@ -2,6 +2,7 @@ package com.example.demo.util;
 
 import com.example.demo.config.ConfigurationProperty;
 import com.example.demo.exception.CustomSMTPException;
+import com.sun.mail.smtp.SMTPSendFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,15 +31,15 @@ public class EmailSenderUtil {
     @Value("${spring.profiles.active}")
     private String enviornmentValue;
 
-    private Set<String> results;
-
-    public Set<String> getResults() {
-        return results;
-    }
+    private Set<String> failEmailList;
 
     public EmailSenderUtil(ConfigurationProperty configurationProperty) {
         this.configurationProperty = configurationProperty;
-        this.results = new HashSet<>();
+        this.failEmailList = new HashSet<>();
+    }
+
+    public Set<String> getFailEmailList() {
+        return failEmailList;
     }
 
     public void sendEmail(String toEmailAddress, String Subject, String messageContent) throws CustomSMTPException {
@@ -59,35 +60,17 @@ public class EmailSenderUtil {
 
             Transport.send(message);
             log.info("Email sent successfully!");
-//            results.put(toEmailAddress, true);  // Success
 
 //            throw new javax.mail.SendFailedException("SMTP Send failed", new javax.mail.SendFailedException());
 
-        } catch (SendFailedException e) {
+        } catch (SMTPSendFailedException e) {
             Address[] validUnsentAddresses = e.getValidUnsentAddresses();
-
-            results.add(toEmailAddress); // Failure
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("Failed to send email to the following recipients:\n");
-            for (Address address : validUnsentAddresses) {
-                sb.append("- ").append(address).append("\n");
-            }
-            System.err.println(sb.toString());
-            System.out.println("SMTPSendFailedException:" + e.getMessage());
+            failEmailList.add(toEmailAddress); // Failure
+            log.error("SMTPSendFailedException:" + e.getMessage());
             throw new CustomSMTPException("Failed to send email to " + toEmailAddress, e);
-        } /*catch (SMTPSenderFailedException e) {
-            System.out.println("SMTPSenderFailedException: " + e.getMessage());
-            throw new CustomSMTPException("SMTP sender failed while sending email to " + toEmailAddress, e);
-        } catch (SMTPAddressSucceededException e) {
-            System.out.println("SMTPAddressSucceededException: " + e.getMessage());
-            throw new CustomSMTPException("SMTP address succeeded while sending email to " + toEmailAddress, e);
-        } catch (SMTPAddressFailedException e) {
-            System.out.println("SMTPAddressFailedException: " + e.getMessage());
-            throw new CustomSMTPException("SMTP address failed while sending email to " + toEmailAddress, e);
-        }*/ catch (MessagingException e) {
-            System.out.println("MessagingException: " + e.getMessage());
-            e.printStackTrace();
+        }  catch (MessagingException e) {
+            log.error("MessagingException: " + e.getMessage());
+            throw new CustomSMTPException("Failed to send email to " + toEmailAddress, e);
         }
     }
 

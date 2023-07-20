@@ -15,8 +15,8 @@ public class EmailScheduler {
     @Autowired
     EmailService emailService;
 
-    @Scheduled(cron = "0 0/5 * * * *") // Every 5 minutes
+    @Scheduled(cron = "0 0/2 * * * *") // Every 5 minutes
     public void resendFailedEmails() {
-        emailService.sendEmails();
+        emailService.resendEmails();
     }
 }

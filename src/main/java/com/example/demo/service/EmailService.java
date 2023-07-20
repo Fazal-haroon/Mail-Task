@@ -21,19 +21,37 @@ public class EmailService {
     @Autowired
     private EmailSenderUtil emailSenderService;
 
-    List<Recipient> recipients;
+    private List<Recipient> masterRecipients;
+
+    private List<Long> userIdList;
+
+    private Set<String> emailList;
 
     public EmailService(RecipientRepository recipientRepo, EmailSenderUtil emailSenderService) {
         this.recipientRepo = recipientRepo;
         this.emailSenderService = emailSenderService;
+        this.userIdList = new ArrayList<>();
+        this.emailList = new HashSet<>();
     }
 
     @Transactional
     public void sendEmails() {
-        List<Long> userIdList = new ArrayList<>();
-        Set<String> emailList = new HashSet<>();
-        recipients = recipientRepo.findBySent(false);
-        recipients.stream().forEach(recipient -> {
+        loadMasterRecipients();
+        processRecipients();
+    }
+
+    @Transactional
+    public void resendEmails() {
+        loadMasterRecipients();
+        processRecipients();
+    }
+
+    private void loadMasterRecipients() {
+        masterRecipients = recipientRepo.findBySent(false);
+    }
+
+    private void processRecipients() {
+        masterRecipients.forEach(recipient -> {
             try {
                 emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
                 userIdList.add(recipient.getId());
@@ -41,14 +59,18 @@ public class EmailService {
                 throw new RuntimeException(e);
             }
         });
-        //Update Query
-        recipientRepo.updateFlagForUsers(userIdList);
-        Set<String> results = emailSenderService.getResults();
-        results.stream().forEach(element -> {
-            emailList.add(element);
-        });
-        //search query
-        List<Recipient> recipients1 = recipientRepo.searchByEmail(emailList);
-        recipients = recipients1;
+        if (userIdList.size() > 0) {
+            // Bulk update the flag for sent recipients
+            recipientRepo.updateFlagForUsers(userIdList);
+            userIdList.clear();
+        }
+
+        Set<String> failEmailList = emailSenderService.getFailEmailList();
+        emailList.addAll(failEmailList);
+        if (failEmailList.size() > 0) {
+            // Search for recipients based on failed emails
+            masterRecipients = recipientRepo.searchByEmail(emailList);
+            emailList.clear();
+        }
     }
 }
