@@ -17,10 +17,7 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 @Service
 public class EmailSenderUtil {
@@ -33,19 +30,15 @@ public class EmailSenderUtil {
     @Value("${spring.profiles.active}")
     private String enviornmentValue;
 
-    private Map<String, Boolean> results;
+    private Set<String> results;
 
-    public Map<String, Boolean> getResults() {
+    public Set<String> getResults() {
         return results;
-    }
-
-    public void setResults(Map<String, Boolean> results) {
-        this.results = results;
     }
 
     public EmailSenderUtil(ConfigurationProperty configurationProperty) {
         this.configurationProperty = configurationProperty;
-        this.results = new HashMap<>();
+        this.results = new HashSet<>();
     }
 
     public void sendEmail(String toEmailAddress, String Subject, String messageContent) throws CustomSMTPException {
@@ -73,7 +66,7 @@ public class EmailSenderUtil {
         } catch (SendFailedException e) {
             Address[] validUnsentAddresses = e.getValidUnsentAddresses();
 
-            results.put(toEmailAddress, false); // Failure
+            results.add(toEmailAddress); // Failure
 
             StringBuilder sb = new StringBuilder();
             sb.append("Failed to send email to the following recipients:\n");
