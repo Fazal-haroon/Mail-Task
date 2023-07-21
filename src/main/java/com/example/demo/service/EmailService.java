@@ -35,20 +35,13 @@ public class EmailService {
 
     private List<Recipient> recipientsToUpdate; // List to store recipients that need to be updated in the database
 
-    private Set<String> emailList;
-
     public EmailService() {
         this.recipientsToUpdate = new ArrayList<>();
-        this.emailList = new HashSet<>();
     }
-
-//    @Cacheable("masterRecipients")
-//    public List<Recipient> getMasterRecipients() {
-//        return recipientRepo.findBySent(false);
-//    }
 
     @Transactional
     public void sendEmails() {
+        log.info("<------sendEmails() Method Called----->");
         loadMasterRecipients();
         processRecipients();
         bulkUpdateRecipients(); // Bulk update the recipients at the end
@@ -56,12 +49,29 @@ public class EmailService {
 
     @Transactional
     public void resendEmails() {
-        // Check if master recipients are already cached
+        log.info("<------resendEmails() Method Called----->");
         if (masterRecipients == null) {
             // If not cached, load recipients from the database
             loadMasterRecipients();
         }
-        processRecipients();
+        Set<String> failEmailList = emailSenderService.getFailEmailList();
+        // Filter masterRecipients and collect recipients whose email addresses match the failed email addresses
+        List<Recipient> failedRecipients = masterRecipients.stream()
+                .filter(recipient -> failEmailList.contains(recipient.getEmail()))
+                .collect(Collectors.toList());
+        // Now you have a list of failedRecipients containing recipients with failed emails
+        // You can resend the emails for these recipients
+        failedRecipients.forEach(recipient -> {
+            try {
+                emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
+                recipientsToUpdate.add(recipient);
+
+                // Remove the recipient from the cache after sending the email successfully
+                removeRecipientFromCache(recipient);
+            } catch (MessagingException e) {
+                log.error("Error sending email to {}: {}", recipient.getEmail(), e.getMessage(), e);
+            }
+        });
         bulkUpdateRecipients(); // Bulk update the recipients at the end
     }
 
@@ -98,13 +108,6 @@ public class EmailService {
                 log.error("Error sending email to {}: {}", recipient.getEmail(), e.getMessage(), e);
             }
         });
-        Set<String> failEmailList = emailSenderService.getFailEmailList();
-        emailList.addAll(failEmailList);
-        if (!failEmailList.isEmpty()) {
-            // Search for recipients based on failed emails
-            masterRecipients = recipientRepo.searchByEmail(emailList);
-            emailList.clear();
-        }
     }
 
 
@@ -112,8 +115,11 @@ public class EmailService {
         List<Long> userIdList = recipientsToUpdate.stream()
                 .map(Recipient::getId)
                 .collect(Collectors.toList());
-
-        if (!userIdList.isEmpty()) {
+        //Todo: In case of server downtime, masterRecipients may lose all data,
+        // and the sent email records may have inaccuracies in the database b/c no bulk update exec.
+        // Server downtime will clear all in-memory data, making it challenging to identify successful email
+        //if (!userIdList.isEmpty() && masterRecipients.size() == 0) {
+        if(!userIdList.isEmpty()) {
             recipientRepo.updateFlagForUsers(userIdList); // Perform the bulk update
         }
 
