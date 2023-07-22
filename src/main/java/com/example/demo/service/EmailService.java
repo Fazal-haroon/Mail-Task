@@ -5,17 +5,18 @@ import com.example.demo.repository.RecipientRepository;
 import com.example.demo.util.EmailSenderUtil;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.mail.MessagingException;
 import javax.transaction.Transactional;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,103 +24,124 @@ import java.util.stream.Collectors;
 public class EmailService {
 
     @Autowired
-    RecipientRepository recipientRepo;
+    private RecipientRepository recipientRepo;
 
     @Autowired
     private EmailSenderUtil emailSenderService;
 
     @Autowired
-    private CacheManager cacheManager;
+    private RedisTemplate<String, Object> redisTemplate;
 
-    private List<Recipient> masterRecipients;
+    private List<Recipient> recipientsToUpdate = new ArrayList<>();
 
-    private List<Recipient> recipientsToUpdate; // List to store recipients that need to be updated in the database
+    @Cacheable(value = "masterRecipientCache", key = "'masterRecipient'")
+    public List<Recipient> getAllDataFromMySQLAndCacheInRedis() {
+        // Fetch all data from MySQL
+        List<Recipient> recipientList = recipientRepo.findBySent(false);
 
-    public EmailService() {
-        this.recipientsToUpdate = new ArrayList<>();
+        // Save the data in Redis with a cache duration of 1 day
+        redisTemplate.opsForValue().set("masterRecipient", recipientList, 1, TimeUnit.DAYS); // Cache for 1 day
+
+        return recipientList;
+    }
+
+    @CacheEvict(value = "masterRecipientCache", key = "'masterRecipient'")
+    public void evictDataFromCache(Recipient recipient) {
+        // This method is used to manually evict the recipient data from the cache
+        // after successfully sending an email to the recipient
+        log.info("Evicting recipient with ID: {} from the cache.", recipient.getId());
+    }
+
+    @Cacheable(value = "masterRecipientCache", key = "'masterRecipient'")
+    public List<Recipient> getAllDataFromRedisCache(boolean sentStatus) {
+        // Retrieve the entire list of recipients from the cache
+        List<Recipient> recipientList = (List<Recipient>) redisTemplate.opsForValue().get("masterRecipient");
+
+        // If cache is empty, fetch data from MySQL and cache it
+        if (recipientList == null || recipientList.isEmpty()) {
+            recipientList = getAllDataFromMySQLAndCacheInRedis();
+        }
+        // Filter the recipient list based on the sent status
+        return recipientList.stream()
+                .filter(recipient -> recipient.isSent() == sentStatus)
+                .collect(Collectors.toList());
     }
 
     @Transactional
     public void sendEmails() {
         log.info("<------sendEmails() Method Called----->");
-        loadMasterRecipients();
-        processRecipients();
-        bulkUpdateRecipients(); // Bulk update the recipients at the end
+        List<Recipient> recipientsToSend = getAllDataFromRedisCache(false); // Use Redis cache data
+        processRecipients(recipientsToSend);
+        // Bulk update the recipients at the end
+//        bulkUpdateRecipients();
+    }
+
+    @Transactional
+    public void setRecipientsAsSent(Recipient recipients) {
+        log.info("setRecipientsAsSent() Method Called");
+            recipients.setSent(true);
+            // Update the record in Redis cache
+        updateRecipientInCacheWithoutUpdatingDatabase(recipients);
+    }
+
+    @Transactional
+    public void updateRecipientInCacheWithoutUpdatingDatabase(Recipient updatedRecipient) {
+        log.info("updateRecipientInCacheWithoutUpdatingDatabase() Method Called");
+        List<Recipient> recipientList = getAllDataFromRedisCache(false);
+
+        // Find the recipient in the list and update its properties
+        Optional<Recipient> recipientToUpdate = recipientList.stream()
+                .filter(recipient -> recipient.getId().equals(updatedRecipient.getId()))
+                .findFirst();
+
+        if (recipientToUpdate.isPresent()) {
+            Recipient recipient = recipientToUpdate.get();
+            recipient.setEmail(updatedRecipient.getEmail());
+            recipient.setSubject(updatedRecipient.getSubject());
+            recipient.setBody(updatedRecipient.getBody());
+            recipient.setSent(updatedRecipient.isSent());
+
+            // Update the entire list in Redis cache
+            redisTemplate.opsForValue().set("masterRecipient", recipientList, 1, TimeUnit.DAYS); // Cache for 1 day
+        } else {
+            log.warn("Recipient with ID {} not found in Redis cache.", updatedRecipient.getId());
+        }
     }
 
     @Transactional
     public void resendEmails() {
         log.info("<------resendEmails() Method Called----->");
-        if (masterRecipients == null) {
-            // If not cached, load recipients from the database
-            loadMasterRecipients();
-        }
         Set<String> failEmailList = emailSenderService.getFailEmailList();
-        // Filter masterRecipients and collect recipients whose email addresses match the failed email addresses
-        List<Recipient> failedRecipients = masterRecipients.stream()
+        // Filter recipients and collect recipients whose email addresses match the failed email addresses
+        List<Recipient> failedRecipients = getAllDataFromRedisCache(false).stream()
                 .filter(recipient -> failEmailList.contains(recipient.getEmail()))
                 .collect(Collectors.toList());
         // Now you have a list of failedRecipients containing recipients with failed emails
         // You can resend the emails for these recipients
-        failedRecipients.forEach(recipient -> {
-            try {
-                emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
-                recipientsToUpdate.add(recipient);
-
-                // Remove the recipient from the cache after sending the email successfully
-                removeRecipientFromCache(recipient);
-            } catch (MessagingException e) {
-                log.error("Error sending email to {}: {}", recipient.getEmail(), e.getMessage(), e);
-            }
-        });
-        bulkUpdateRecipients(); // Bulk update the recipients at the end
+        processRecipients(failedRecipients);
+        // Bulk update the recipients at the end
+//        bulkUpdateRecipients();
     }
 
-    private void loadMasterRecipients() {
-        // Check if master recipients are already cached
-        Cache masterRecipientsCache = cacheManager.getCache("masterRecipients");
-        if (masterRecipientsCache != null) {
-            // Retrieve master recipients from the cache
-            Cache.ValueWrapper valueWrapper = masterRecipientsCache.get("recipients");
-            if (valueWrapper != null) {
-                masterRecipients = (List<Recipient>) valueWrapper.get();
-                return;
-            }
-        }
-        // If not cached, fetch recipients from the database
-        masterRecipients = recipientRepo.findBySent(false);
-        // Cache the master recipients for future use
-        if (masterRecipientsCache != null) {
-            masterRecipientsCache.put("recipients", masterRecipients);
-        }
-    }
-
-    private void processRecipients() {
-        List<Recipient> recipientsCopy = new ArrayList<>(masterRecipients);
-
-        recipientsCopy.forEach(recipient -> {
+    private void processRecipients(List<Recipient> recipientsToSend) {
+        recipientsToSend.forEach(recipient -> {
             try {
                 emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
-                recipientsToUpdate.add(recipient);
-
-                // Remove the recipient from the cache after sending the email successfully
-                removeRecipientFromCache(recipient);
+//                evictDataFromCache(recipient);
+//                recipientsToUpdate.add(recipient);
+                setRecipientsAsSent(recipient);
+//                updateRecipientInCacheWithoutUpdatingDatabase(recipient);
             } catch (MessagingException e) {
                 log.error("Error sending email to {}: {}", recipient.getEmail(), e.getMessage(), e);
             }
         });
     }
-
 
     private void bulkUpdateRecipients() {
         List<Long> userIdList = recipientsToUpdate.stream()
                 .map(Recipient::getId)
                 .collect(Collectors.toList());
-        //Todo: In case of server downtime, masterRecipients may lose all data,
-        // and the sent email records may have inaccuracies in the database b/c no bulk update exec.
-        // Server downtime will clear all in-memory data, making it challenging to identify successful email
-        //if (!userIdList.isEmpty() && masterRecipients.size() == 0) {
-        if(!userIdList.isEmpty()) {
+        if (!userIdList.isEmpty()) {
             recipientRepo.updateFlagForUsers(userIdList); // Perform the bulk update
         }
 
@@ -127,20 +149,4 @@ public class EmailService {
         recipientsToUpdate.clear();
     }
 
-    // Method to remove a recipient from the cache
-    public void removeRecipientFromCache(Recipient recipient) {
-        Cache masterRecipientsCache = cacheManager.getCache("masterRecipients");
-        if (masterRecipientsCache != null) {
-            // Retrieve the cached master recipients
-            Cache.ValueWrapper valueWrapper = masterRecipientsCache.get("recipients");
-            if (valueWrapper != null) {
-                List<Recipient> cachedRecipients = (List<Recipient>) valueWrapper.get();
-                if (cachedRecipients != null) {
-                    // Remove the specified recipient from the cached list
-                    cachedRecipients.remove(recipient);
-                    masterRecipientsCache.put("recipients", cachedRecipients);
-                }
-            }
-        }
-    }
 }

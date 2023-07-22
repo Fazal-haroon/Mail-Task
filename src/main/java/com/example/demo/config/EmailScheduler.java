@@ -20,6 +20,6 @@ public class EmailScheduler {
     @Scheduled(cron = "0 0/2 * * * *") // Every 5 minutes
     public void scheduleResendFailedEmails() {
         log.info("<------scheduleResendFailedEmails() Method Called----->");
-        emailService.resendEmails();
+//        emailService.resendEmails();
     }
 }
