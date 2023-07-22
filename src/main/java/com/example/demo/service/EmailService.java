@@ -41,7 +41,7 @@ public class EmailService {
             log.info("Fetching data from MySQL and caching it in Redis.");
             recipientList = recipientRepo.findAll();
 
-            for (Recipient recipient : recipientList) {
+            recipientList.forEach(recipient -> {
                 String hashKey = "recipient:" + recipient.getId();
                 redisTemplate.opsForHash().put(hashKey, "email", recipient.getEmail());
                 redisTemplate.opsForHash().put(hashKey, "subject", recipient.getSubject());
@@ -49,7 +49,7 @@ public class EmailService {
                 redisTemplate.opsForHash().put(hashKey, "sent", recipient.isSent());
                 redisTemplate.expire(hashKey, 10, TimeUnit.MINUTES);
                 log.info("Redis Data Hash Key: {}", hashKey);
-            }
+            });
         } else {
             log.info("Data found in Redis cache. Skipping database fetch.");
         }
@@ -59,7 +59,7 @@ public class EmailService {
     private List<Recipient> retrieveAllDataFromRedis() {
         List<Recipient> recipients = new ArrayList<>();
         Set<String> hashKeys = redisTemplate.keys("recipient:*");
-        for (String hashKey : hashKeys) {
+        hashKeys.forEach(hashKey -> {
             Recipient recipient = new Recipient();
             recipient.setId(Long.valueOf(hashKey.substring("recipient:".length())));
             recipient.setEmail((String) redisTemplate.opsForHash().get(hashKey, "email"));
@@ -67,7 +67,7 @@ public class EmailService {
             recipient.setBody((String) redisTemplate.opsForHash().get(hashKey, "body"));
             recipient.setSent((Boolean) redisTemplate.opsForHash().get(hashKey, "sent"));
             recipients.add(recipient);
-        }
+        });
         return recipients;
     }
 
