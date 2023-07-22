@@ -11,8 +11,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.mail.MessagingException;
-import javax.transaction.Transactional;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -32,16 +30,13 @@ public class EmailService {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
-    private List<Recipient> recipientsToUpdate = new ArrayList<>();
-
     @Cacheable(value = "masterRecipientCache", key = "'masterRecipient'")
     public List<Recipient> getAllDataFromMySQLAndCacheInRedis() {
+        log.info("<------getAllDataFromMySQLAndCacheInRedis() Method Called----->");
         // Fetch all data from MySQL
-        List<Recipient> recipientList = recipientRepo.findBySent(false);
-
+        List<Recipient> recipientList = recipientRepo.findAll();
         // Save the data in Redis with a cache duration of 1 day
         redisTemplate.opsForValue().set("masterRecipient", recipientList, 1, TimeUnit.DAYS); // Cache for 1 day
-
         return recipientList;
     }
 
@@ -54,6 +49,7 @@ public class EmailService {
 
     @Cacheable(value = "masterRecipientCache", key = "'masterRecipient'")
     public List<Recipient> getAllDataFromRedisCache(boolean sentStatus) {
+        log.info("<------getAllDataFromRedisCache() Method Called----->");
         // Retrieve the entire list of recipients from the cache
         List<Recipient> recipientList = (List<Recipient>) redisTemplate.opsForValue().get("masterRecipient");
 
@@ -67,24 +63,19 @@ public class EmailService {
                 .collect(Collectors.toList());
     }
 
-    @Transactional
     public void sendEmails() {
         log.info("<------sendEmails() Method Called----->");
         List<Recipient> recipientsToSend = getAllDataFromRedisCache(false); // Use Redis cache data
         processRecipients(recipientsToSend);
-        // Bulk update the recipients at the end
-//        bulkUpdateRecipients();
     }
 
-    @Transactional
     public void setRecipientsAsSent(Recipient recipients) {
         log.info("setRecipientsAsSent() Method Called");
-            recipients.setSent(true);
-            // Update the record in Redis cache
+        recipients.setSent(true);
+        // Update the record in Redis cache
         updateRecipientInCacheWithoutUpdatingDatabase(recipients);
     }
 
-    @Transactional
     public void updateRecipientInCacheWithoutUpdatingDatabase(Recipient updatedRecipient) {
         log.info("updateRecipientInCacheWithoutUpdatingDatabase() Method Called");
         List<Recipient> recipientList = getAllDataFromRedisCache(false);
@@ -108,7 +99,6 @@ public class EmailService {
         }
     }
 
-    @Transactional
     public void resendEmails() {
         log.info("<------resendEmails() Method Called----->");
         Set<String> failEmailList = emailSenderService.getFailEmailList();
@@ -119,34 +109,18 @@ public class EmailService {
         // Now you have a list of failedRecipients containing recipients with failed emails
         // You can resend the emails for these recipients
         processRecipients(failedRecipients);
-        // Bulk update the recipients at the end
-//        bulkUpdateRecipients();
     }
 
     private void processRecipients(List<Recipient> recipientsToSend) {
+        log.info("<------processRecipients() Method Called----->");
         recipientsToSend.forEach(recipient -> {
             try {
                 emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
-//                evictDataFromCache(recipient);
-//                recipientsToUpdate.add(recipient);
                 setRecipientsAsSent(recipient);
-//                updateRecipientInCacheWithoutUpdatingDatabase(recipient);
             } catch (MessagingException e) {
                 log.error("Error sending email to {}: {}", recipient.getEmail(), e.getMessage(), e);
             }
         });
-    }
-
-    private void bulkUpdateRecipients() {
-        List<Long> userIdList = recipientsToUpdate.stream()
-                .map(Recipient::getId)
-                .collect(Collectors.toList());
-        if (!userIdList.isEmpty()) {
-            recipientRepo.updateFlagForUsers(userIdList); // Perform the bulk update
-        }
-
-        // Clear the recipientsToUpdate list after the bulk update
-        recipientsToUpdate.clear();
     }
 
 }
