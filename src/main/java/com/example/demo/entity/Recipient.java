@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "RECIPIENT")
@@ -25,5 +26,8 @@ public class Recipient {
 
     private String body;
 
-    private boolean sent;
+    private boolean sent; // true if sent, false otherwise
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt; // Time when the email was created
 }
