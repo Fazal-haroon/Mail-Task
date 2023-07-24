@@ -42,7 +42,7 @@ public class EmailSenderUtil {
         return failEmailList;
     }
 
-    public void sendEmail(String toEmailAddress, String Subject, String messageContent) throws CustomSMTPException {
+    public void sendEmail(String toEmailAddress, String Subject, String messageContent) {
         Properties prop = setSystemProperties();
         Session session = Session.getInstance(prop, new javax.mail.Authenticator() {
             protected PasswordAuthentication getPasswordAuthentication() {
@@ -67,10 +67,8 @@ public class EmailSenderUtil {
             Address[] validUnsentAddresses = e.getValidUnsentAddresses();
             failEmailList.add(toEmailAddress); // Failure
             log.error("SMTPSendFailedException:" + e.getMessage());
-            throw new CustomSMTPException("Failed to send email to " + toEmailAddress, e);
         }  catch (MessagingException e) {
             log.error("MessagingException: " + e.getMessage());
-            throw new CustomSMTPException("Failed to send email to " + toEmailAddress, e);
         }
     }
 

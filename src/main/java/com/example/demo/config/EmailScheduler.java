@@ -9,7 +9,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.mail.MessagingException;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -33,15 +32,11 @@ public class EmailScheduler {
             List<Recipient> pendingRecipients = emailService.getAllPendingRecipients();
             if (!pendingRecipients.isEmpty()) {
                 Recipient recipient = pendingRecipients.get(0);
-                try {
-                    // here I will call the MicroSoft 365 Outlook
-                    emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
-                    // Send the email
-                    recipient.setSent(true);
-                    emailService.updateRecipientSentStatus(recipient);
-                } catch (MessagingException e) {
-                    log.error("Error sending email to {}: {}", recipient.getEmail(), e.getMessage(), e);
-                }
+                // here I will call the MicroSoft 365 Outlook
+                emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
+                // Send the email
+                recipient.setSent(true);
+                emailService.updateRecipientSentStatus(recipient);
                 Set<String> results = emailSenderService.getFailEmailList();
                 // Filter the pending recipients whose email addresses are in the failed email list
                 List<Recipient> recipientsToUpdateFlagFalse = pendingRecipients.stream()
