@@ -25,21 +25,21 @@ public class EmailScheduler {
     private boolean newRecipientsCreated = true; // Set it to true initially to fetch data for the first time
 
     //@Scheduled(fixedDelay = 2000) // Every 2 seconds
-    @Scheduled(cron = "*/2 * * * * *") // Every 2 seconds
+//    @Scheduled(cron = "*/2 * * * * *") // Every 2 seconds
     public void processIndividualEmail() {
         if (newRecipientsCreated) {
-            List<Recipient> pendingRecipients = emailService.getAllPendingRecipients();
+            List<Recipient> pendingRecipients = emailService.getAllPendingRecipientsData();
             if (!pendingRecipients.isEmpty()) {
                 Recipient recipient = pendingRecipients.get(0);
                 // here I will call the MicroSoft 365 Outlook
-                emailSenderService.sendEmail(recipient.getEmail(), recipient.getSubject(), recipient.getBody());
+                emailSenderService.sendEmail(recipient.getToEmail(), recipient.getSubject(), recipient.getMessageContent());
                 // Send the email
                 recipient.setSent(true);
                 emailService.updateRecipientSentStatus(recipient);
                 Set<String> results = emailSenderService.getFailEmailList();
                 // Filter the pending recipients whose email addresses are in the failed email list
                 List<Recipient> recipientsToUpdateFlagFalse = pendingRecipients.stream()
-                        .filter(recipientFail -> results.contains(recipientFail.getEmail()))
+                        .filter(recipientFail -> results.contains(recipientFail.getToEmail()))
                         .collect(Collectors.toList());
                 // Update the sent status and createdAt for the filtered recipients
                 recipientsToUpdateFlagFalse.forEach(recipientFails -> {

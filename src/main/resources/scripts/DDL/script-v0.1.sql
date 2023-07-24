@@ -1,6 +1,7 @@
 --start fazal - 17/07/2023
 
-CREATE DATABASE `maildb`;
+CREATE
+DATABASE `maildb`;
 
 CREATE TABLE RECIPIENT
 (
@@ -15,4 +16,25 @@ CREATE TABLE RECIPIENT
 DROP TABLE recipient;
 
 --end fazal - 17/07/2023
+
+--start fazal - 24/07/2023
+CREATE TABLE RECIPIENT
+(
+    ID              BIGINT       NOT NULL AUTO_INCREMENT,
+    SUBJECT         VARCHAR(255) NOT NULL,
+    MESSAGE_CONTENT LONGTEXT,
+    `TO`            MEDIUMTEXT,
+    CC              MEDIUMTEXT,
+    BCC             MEDIUMTEXT,
+    ATTACH          MEDIUMTEXT,
+    FILENAMES       MEDIUMTEXT,
+    EMBEDDED_IMAGES MEDIUMTEXT,
+    RECIETPNAME     VARCHAR(255),
+    SENT            TINYINT DEFAULT 0,
+    CREATED_AT      DATETIME     NOT NULL,
+    PRIMARY KEY (ID)
+);
+
+DROP TABLE RECIPIENT;
+--end fazal - 24/07/2023
 
