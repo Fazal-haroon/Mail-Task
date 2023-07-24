@@ -1,7 +1,6 @@
 package com.example.demo.util;
 
 import com.example.demo.config.ConfigurationProperty;
-import com.example.demo.exception.CustomSMTPException;
 import com.sun.mail.smtp.SMTPSendFailedException;
 import com.sun.mail.smtp.SMTPTransport;
 import org.slf4j.Logger;
@@ -18,7 +17,10 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
 
 @Service
 public class EmailSenderUtil {
